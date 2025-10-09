@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+*.pyo
+
+.venv/
+.DS_Store
+*.log
+
+.env
+env.list
+bot_subscriptions.json
+avito_qa_state.json
+
+.vscode/
+.idea/
