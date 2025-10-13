@@ -66,6 +66,10 @@ def _write_json_file(path: str, data: Dict[str, Any]) -> None:
 @dataclass
 class BotState:
     subscribed_chat_ids: Set[int]
+    # Период в секундах для каждого чата
+    chat_period_sec: Dict[int, int]
+    # Следующее время отправки для каждого чата (monotonic)
+    chat_next_run: Dict[int, float]
     last_update_id: Optional[int]
     lock: threading.Lock
 
@@ -73,11 +77,29 @@ class BotState:
 def load_state() -> BotState:
     raw = _read_json_file(SUBSCRIPTIONS_FILE)
     if not raw:
-        return BotState(subscribed_chat_ids=set(), last_update_id=None, lock=threading.Lock())
+        return BotState(
+            subscribed_chat_ids=set(),
+            chat_period_sec={},
+            chat_next_run={},
+            last_update_id=None,
+            lock=threading.Lock(),
+        )
     chats = set()
     for v in raw.get("subscribed_chat_ids", []):
         try:
             chats.add(int(v))
+        except Exception:
+            continue
+    periods = {}
+    for k, v in (raw.get("chat_period_sec") or {}).items():
+        try:
+            periods[int(k)] = int(v)
+        except Exception:
+            continue
+    next_run = {}
+    for k, v in (raw.get("chat_next_run") or {}).items():
+        try:
+            next_run[int(k)] = float(v)
         except Exception:
             continue
     last_update_id = raw.get("last_update_id")
@@ -85,13 +107,21 @@ def load_state() -> BotState:
         last_update_id = int(last_update_id) if last_update_id is not None else None
     except Exception:
         last_update_id = None
-    return BotState(subscribed_chat_ids=chats, last_update_id=last_update_id, lock=threading.Lock())
+    return BotState(
+        subscribed_chat_ids=chats,
+        chat_period_sec=periods,
+        chat_next_run=next_run,
+        last_update_id=last_update_id,
+        lock=threading.Lock(),
+    )
 
 
 def save_state(state: BotState) -> None:
     with state.lock:
         data = {
             "subscribed_chat_ids": sorted(list(state.subscribed_chat_ids)),
+            "chat_period_sec": {str(k): v for k, v in state.chat_period_sec.items()},
+            "chat_next_run": {str(k): v for k, v in state.chat_next_run.items()},
             "last_update_id": state.last_update_id,
         }
     _write_json_file(SUBSCRIPTIONS_FILE, data)
@@ -124,6 +154,17 @@ def telegram_api_call(token: str, method: str, params: Optional[Dict[str, Any]] 
 
 def handle_update(state: BotState, token: str, upd: Dict[str, Any]) -> None:
     message = upd.get("message") or upd.get("edited_message")
+    callback_query = upd.get("callback_query")
+
+    if isinstance(callback_query, dict):
+        data = callback_query.get("data") or ""
+        msg = callback_query.get("message") or {}
+        chat = (msg.get("chat") or {})
+        chat_id = chat.get("id")
+        if isinstance(chat_id, int) and data:
+            on_callback(state, token, chat_id, str(data))
+        return
+
     if not isinstance(message, dict):
         return
     chat = message.get("chat") or {}
@@ -133,24 +174,78 @@ def handle_update(state: BotState, token: str, upd: Dict[str, Any]) -> None:
         return
 
     if text == "/start":
+        show_main_menu(token, chat_id)
+        return
+
+    if text == "/stop":
+        with state.lock:
+            state.subscribed_chat_ids.discard(chat_id)
+            state.chat_period_sec.pop(chat_id, None)
+            state.chat_next_run.pop(chat_id, None)
+        save_state(state)
+        send_telegram_message(token, str(chat_id), "Подписка остановлена. Команда /start — чтобы открыть меню.")
+        return
+
+
+def show_main_menu(token: str, chat_id: int) -> None:
+    kb = {
+        "inline_keyboard": [
+            [
+                {"text": "Включить отслеживание", "callback_data": "enable"},
+                {"text": "Отключить", "callback_data": "disable"},
+            ]
+        ]
+    }
+    send_telegram_message(token, str(chat_id), "Выберите действие:", reply_markup=kb)
+
+
+def show_period_menu(token: str, chat_id: int) -> None:
+    options = [
+        ("Каждые 15 минут", 15 * 60),
+        ("Каждый час", 60 * 60),
+        ("Каждые 6 часов", 6 * 60 * 60),
+        ("Каждые 12 часов", 12 * 60 * 60),
+        ("Раз в сутки", 24 * 60 * 60),
+    ]
+    rows = []
+    for text, sec in options:
+        rows.append([{ "text": text, "callback_data": f"period:{sec}" }])
+    kb = {"inline_keyboard": rows}
+    send_telegram_message(token, str(chat_id), "Выберите периодичность:", reply_markup=kb)
+
+
+def on_callback(state: BotState, token: str, chat_id: int, data: str) -> None:
+    if data == "enable":
+        show_period_menu(token, chat_id)
+        return
+    if data == "disable":
+        with state.lock:
+            state.subscribed_chat_ids.discard(chat_id)
+            state.chat_period_sec.pop(chat_id, None)
+            state.chat_next_run.pop(chat_id, None)
+        save_state(state)
+        send_telegram_message(token, str(chat_id), "Подписка отключена.")
+        return
+    if data.startswith("period:"):
+        try:
+            sec = int(data.split(":", 1)[1])
+        except Exception:
+            send_telegram_message(token, str(chat_id), "Некорректный период.")
+            return
+        now = time.monotonic()
         with state.lock:
             state.subscribed_chat_ids.add(chat_id)
+            state.chat_period_sec[chat_id] = sec
+            state.chat_next_run[chat_id] = now + sec  # первая отправка через выбранный период
         save_state(state)
-        send_telegram_message(token, str(chat_id), "Подписка активирована. Буду присылать сводку каждые 15 минут.")
-        # Можно сразу отправить первое сообщение
+        send_telegram_message(token, str(chat_id), f"Готово. Буду присылать каждые {sec // 60} минут.")
+        # Сразу покажем актуальную сводку
         try:
             result = monitor(AVITO_URL)
             msg = format_telegram_summary(result, AVITO_URL)
             send_telegram_message(token, str(chat_id), msg)
         except Exception as e:
             send_telegram_message(token, str(chat_id), f"Не удалось выполнить мониторинг: {e}")
-        return
-
-    if text == "/stop":
-        with state.lock:
-            state.subscribed_chat_ids.discard(chat_id)
-        save_state(state)
-        send_telegram_message(token, str(chat_id), "Подписка остановлена. Команда /start — чтобы возобновить.")
         return
 
 
@@ -179,23 +274,26 @@ def polling_loop(state: BotState, token: str, stop_event: threading.Event) -> No
 
 
 def scheduler_loop(state: BotState, token: str, stop_event: threading.Event) -> None:
-    interval_sec = 15 * 60
-    # Первый запуск через полный интервал, чтобы не дублировать мгновенную отправку из /start
-    next_run = time.monotonic() + interval_sec
     while not stop_event.is_set():
         now = time.monotonic()
-        if now >= next_run:
-            try:
-                result = monitor(AVITO_URL)
-                msg = format_telegram_summary(result, AVITO_URL)
-                with state.lock:
-                    chat_ids = list(state.subscribed_chat_ids)
-                for chat_id in chat_ids:
+        try:
+            with state.lock:
+                items = list(state.chat_next_run.items())
+        except Exception:
+            items = []
+        for chat_id, ts in items:
+            if now >= ts:
+                try:
+                    result = monitor(AVITO_URL)
+                    msg = format_telegram_summary(result, AVITO_URL)
                     send_telegram_message(token, str(chat_id), msg)
-            except Exception as e:
-                print(f"Ошибка планировщика: {e}", file=sys.stderr)
-            next_run = now + interval_sec
-        # Небольшой сон, чтобы не грузить CPU
+                except Exception as e:
+                    print(f"Ошибка планировщика: {e}", file=sys.stderr)
+                # Запланировать следующий запуск по индивидуальному интервалу
+                with state.lock:
+                    sec = state.chat_period_sec.get(chat_id, 15 * 60)
+                    state.chat_next_run[chat_id] = now + sec
+                save_state(state)
         stop_event.wait(1.0)
 
 

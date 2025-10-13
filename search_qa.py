@@ -285,7 +285,7 @@ def _noop() -> None:
     return None
 
 
-def send_telegram_message(token: str, chat_id: str, text: str) -> bool:
+def send_telegram_message(token: str, chat_id: str, text: str, reply_markup: Optional[dict] = None) -> bool:
     if not token or not chat_id:
         return False
     api_url = f"https://api.telegram.org/bot{token}/sendMessage"
@@ -295,6 +295,11 @@ def send_telegram_message(token: str, chat_id: str, text: str) -> bool:
         "parse_mode": "HTML",
         "disable_web_page_preview": True,
     }
+    if reply_markup is not None:
+        try:
+            payload["reply_markup"] = json.dumps(reply_markup, ensure_ascii=False)
+        except Exception:
+            pass
     data = urlencode(payload).encode("utf-8")
     try:
         req = Request(api_url, data=data, method="POST")
