@@ -22,6 +22,8 @@ To represent existing state there are tags:
 '''
 import os
 import argparse
+import signal
+import sys
 
 ## RaspberryPI constraints
 MAX_RESPONSE_SIZE = 5 * 1024 * 1024    # 5MB limit for HTML responses
