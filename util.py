@@ -20,7 +20,11 @@ import os
 import sys
 import json
 import shutil
-from conf import MIN_DISK_SPACE_MB, _shutdown_requested
+
+from html import escape as html_escape
+from html import escape as html_escape
+
+from conf import MIN_DISK_SPACE_MB, _shutdown_requested, STATE_FILE_MAX_SIZE, SUBSCRIPTIONS_FILE
 from vacancy_scraper import MonitorResult
 
 from typing import Optional, Dict, Any
@@ -54,7 +58,7 @@ def load_env_variables():
         load_dotenv(dotenv_path=_DOTENV_PATH, override=True)
     except Exception as e:
         print(f"Error occured:{str(e)}")
-        sys.exit(-2)
+
 
 ## space size checkers
 def check_disk_space(min_free_mb: int = MIN_DISK_SPACE_MB) -> bool:
