@@ -4,6 +4,7 @@ Module contains various and miscelanious functions.
 import signal
 import os
 import sys
+import json
 import shutil
 
 ## HANDLERs
@@ -20,8 +21,8 @@ def register_signal_handlers():
     '''
     Call this function whenever you need to gently react to system signals
     '''
-    signal.signal(signal.SIGINT, shutdown_handler)  #handle ctrl+c
-    signal.signal(signal.SIGTERM, shutdown_handler) #signal sent by not user
+    signal.signal(signal.SIGINT, _shutdown_handler)  #handle ctrl+c
+    signal.signal(signal.SIGTERM, _shutdown_handler) #signal sent by not user
 
 
 def load_env_variables():
@@ -52,3 +53,80 @@ def check_disk_space(min_free_mb: int = MIN_DISK_SPACE_MB) -> bool:
     except Exception as e:
         print(f"Could not check disk space: {e}", file=sys.stderr)
         return True  # Continue anyway
+
+from vacancy_scraper import MonitorResult
+def format_console_output(result: MonitorResult) -> str:
+    if result.count == 0:
+        return "Вакансий нет"
+    lines = [f"Найдено вакансий: {result.count}"]
+    lines.extend(result.titles)
+    return "\n".join(lines)
+
+def format_telegram_summary(result: MonitorResult, url: str) -> str:
+    if result.count == 0:
+        return (
+            f"<b>Avito QA вакансии</b>\n"
+            f"Вакансий нет\n"
+            f"Ссылка: {html_escape(url)}"
+        )
+    safe_titles = [html_escape(t) for t in result.titles]
+    lines = [
+        "<b>Avito QA вакансии</b>",
+        f"Найдено вакансий: <b>{result.count}</b>",
+        *safe_titles,
+        f"Ссылка: {html_escape(url)}",
+    ]
+    return "\n".join(lines)
+
+def check_state_file_size() -> bool:
+    """Проверяет размер файла состояния"""
+    try:
+        if os.path.exists(SUBSCRIPTIONS_FILE):
+            size = os.path.getsize(SUBSCRIPTIONS_FILE)
+            if size > STATE_FILE_MAX_SIZE:
+                print(f"State file too large: {size} bytes", file=sys.stderr)
+                return False
+        return True
+    except Exception:
+        return True
+
+from typing import Optional, Dict, Any
+def _read_json_file(path: str) -> Optional[Dict[str, Any]]:
+    """Чтение JSON файла с проверкой размера"""
+    if not check_disk_space() or not check_state_file_size():
+        return None
+        
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return None
+    except Exception as e:
+        print(f"Error reading {path}: {e}", file=sys.stderr)
+        return None
+
+def _write_json_file(path: str, data: Dict[str, Any]) -> bool:
+    """Запись JSON файла с проверкой ресурсов"""
+    if _shutdown_requested:
+        return False
+        
+    if not check_disk_space():
+        print("Cannot write state: low disk space", file=sys.stderr)
+        return False
+        
+    try:
+        # Check if data would be too large
+        data_size = len(json.dumps(data, ensure_ascii=False))
+        if data_size > STATE_FILE_MAX_SIZE:
+            print(f"State data too large: {data_size} bytes", file=sys.stderr)
+            return False
+            
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, path)
+        return True
+    except Exception as e:
+        print(f"Error writing {path}: {e}", file=sys.stderr)
+        return False
+
