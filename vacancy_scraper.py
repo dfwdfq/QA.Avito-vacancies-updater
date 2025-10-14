@@ -1,10 +1,20 @@
+'''
+This module provides class that gets target page chunk by chunk.
+Since the host machine is RPI, loading large html pages can be
+fatal. To prevent crushes and to be sure page fits into RAM,
+page is loaded chunk by chunk.
+Also it contains the primary class that scrapes page and produces
+pairs of link and vacancy description.
+'''
 import ssl
 import re
 
+from typing import List, Optional
 from dataclasses import dataclass
+
 from html import escape as html_escape
 from html.parser import HTMLParser
-from typing import List, Optional
+
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
@@ -12,6 +22,7 @@ from urllib.error import HTTPError
 from conf import MAX_RESPONSE_SIZE, _shutdown_requested
 
 
+#certification is optional
 try:
     import certifi  
 except Exception:

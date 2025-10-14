@@ -1,8 +1,25 @@
+"""
+module contains functions, solving primary one goal that is
+to retrieve required data from provided hmtl page, gathered by
+vacancy scraper.
+Currently it defines function to retrieve amount and vacancy titles.
+"""
+
 import re
 from html import unescape as html_unescape
 from typing import Optional, List
 from conf import _shutdown_requested
 from vacancy_scraper import VacancyHTMLParser, MonitorResult, fetch_html
+
+#########ONE BIG FUCKING TODO###########
+'''
+If there is no reason to use 2 distinct
+approaches to extract information from
+html page, then one approach(library)
+should be choosen.
+It should decrease complexity at least.
+'''
+########################################
 
 try:
     from bs4 import BeautifulSoup
