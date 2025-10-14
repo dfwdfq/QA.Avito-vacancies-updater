@@ -13,3 +13,7 @@ avito_qa_state.json
 
 .vscode/
 .idea/
+
+*~
+
+.gitignore
