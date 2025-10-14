@@ -17,9 +17,7 @@ from conf import (MIN_DISK_SPACE_MB,
                   _shutdown_requested,
                   get_args)
 
-from util import (register_signal_handlers,                  
-                  load_env_variables,
-                  check_disk_space,
+from util import (check_disk_space,
                   format_console_output,
                   format_telegram_summary)
 
