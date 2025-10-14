@@ -19,15 +19,19 @@ from typing import List, Optional
 
 from conf import MIN_DISK_SPACE_MB, STATE_FILE_MAX_SIZE, MAX_RESPONSE_SIZE,AVITO_URL
 from util import register_signal_handlers,_shutdown_requested, load_env_variables, check_disk_space
+from extractor import extract_count_xpath
 
 from urllib.request import Request, urlopen
 from vacancy_page_parser import VacancyHTMLParser, MonitorResult
 
-# Опциональные зависимости для улучшенного парсинга
+
+
 try:
     import certifi  
 except Exception:
     certifi = None  # type: ignore
+
+# Опциональные зависимости для улучшенного парсинга    
 try:
     from bs4 import BeautifulSoup  # type: ignore
 except Exception:
@@ -39,26 +43,10 @@ except Exception:
 
 
 
-def extract_count_xpath(html: str) -> Optional[int]:
-    """Пробует извлечь количество вакансий по заданному XPath"""
-    if LH is None:
-        return None
-    try:
-        doc = LH.fromstring(html)
-        nodes = doc.xpath('/html/body/main/div/div[2]/div/span')
-        if not nodes:
-            return None
-        text = nodes[0].text_content().strip()
-        m = re.search(r"\d+", text)
-        return int(m.group(0)) if m else None
-    except Exception:
-        return None
 
 def extract_vacancy_titles_bs4(html: str) -> List[str]:
     """Извлекает названия вакансий через BeautifulSoup"""
-    if BeautifulSoup is None:
-        return []
-    
+    if BeautifulSoup is None: return None
     if _shutdown_requested:
         return []
         
