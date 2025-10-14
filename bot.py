@@ -5,6 +5,7 @@ Telegram-бот для мониторинга QA-вакансий.
 
 from typing import Optional,Dict,Any, List
 
+import json
 import os
 import sys
 import threading
