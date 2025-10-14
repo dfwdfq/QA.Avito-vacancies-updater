@@ -1,50 +1,41 @@
-"""
-module contains functions, solving primary one goal that is
-to retrieve required data from provided hmtl page, gathered by
-vacancy scraper.
-Currently it defines function to retrieve amount and vacancy titles.
-"""
-
 import re
+import sys
+import json
 from html import unescape as html_unescape
+from html import escape as html_escape
 from typing import Optional, List
-from conf import _shutdown_requested
-from vacancy_scraper import VacancyHTMLParser, MonitorResult, fetch_html
 
-#########ONE BIG FUCKING TODO###########
-'''
-If there is no reason to use 2 distinct
-approaches to extract information from
-html page, then one approach(library)
-should be choosen.
-It should decrease complexity at least.
-'''
-########################################
+from conf import _shutdown_requested
+from vacancy_scraper import VacancyHTMLParser
 
 try:
     from bs4 import BeautifulSoup
 except Exception:
     BeautifulSoup = None
+
 try:
     import lxml.html as LH 
 except Exception:
     LH = None
 
 def extract_count_xpath(html: str) -> Optional[int]:
-    """Пробует извлечь количество вакансий по заданному XPath"""
-    if LH is not None:
-        try:
-            doc = LH.fromstring(html)
-            nodes = doc.xpath('/html/body/main/div/div[2]/div/span')
-            if not nodes:
-                return None
-            text = nodes[0].text_content().strip()
-            m = re.search(r"\d+", text)
-            return int(m.group(0)) if m else None
-        except Exception:
+    if LH is None:
+        return None
+    try:
+        doc = LH.fromstring(html)
+        nodes = doc.xpath('/html/body/main/div/div[2]/div/span')
+        if not nodes:
             return None
+        text = nodes[0].text_content().strip()
+        m = re.search(r"\d+", text)
+        return int(m.group(0)) if m else None
+    except Exception:
+        return None
 
-def _is_probable_job_link(href: str, text: str) -> bool:
+def _is_probable_job_link(href: str, text: str, blacklist_text: set) -> bool:  # FIXED: Added blacklist_text parameter
+    """Helper function to check if link is a job vacancy"""
+    if _shutdown_requested:
+        return False
     txt = (text or "").strip().lower()
     if not txt or txt in blacklist_text:
         return False
@@ -63,28 +54,30 @@ def _is_probable_job_link(href: str, text: str) -> bool:
 
 def extract_vacancy_titles_bs4(html: str) -> List[str]:
     """Извлекает названия вакансий через BeautifulSoup"""
-    if BeautifulSoup is not None and _shutdown_requested:        
-        try:
-            soup = BeautifulSoup(html, "lxml") if LH is not None else BeautifulSoup(html, "html.parser")
-            anchors = soup.select('a[href*="/vacancies/"]')
-            blacklist_text = {"вакансии", "назад", "смотреть вакансии"}
-
-            seen: set[str] = set()
-            titles: List[str] = []
-            for a in anchors:
-                href = a.get("href") or ""
-                text = a.get_text(" ", strip=True)
-                if _is_probable_job_link(href, text):
-                    if text not in seen:
-                        seen.add(text)
-                        titles.append(text)
-            return titles
+    if BeautifulSoup is None or _shutdown_requested:  # FIXED: Corrected condition
+        return []
         
-        except Exception as e:
-            print(f"Error in BS4 parsing: {e}", file=sys.stderr)
-            return []
-    return []
+    try:
+        soup = BeautifulSoup(html, "lxml") if LH is not None else BeautifulSoup(html, "html.parser")
+        anchors = soup.select('a[href*="/vacancies/"]')
+        blacklist_text = {"вакансии", "назад", "смотреть вакансии"}
 
+        seen: set[str] = set()
+        titles: List[str] = []
+        for a in anchors:
+            if _shutdown_requested:  # Check for shutdown during processing
+                break
+            href = a.get("href") or ""
+            text = a.get_text(" ", strip=True)
+            if _is_probable_job_link(href, text, blacklist_text):  # FIXED: Pass blacklist_text
+                if text not in seen:
+                    seen.add(text)
+                    titles.append(text)
+        return titles
+    
+    except Exception as e:
+        print(f"Error in BS4 parsing: {e}", file=sys.stderr)
+        return []
 
 def extract_vacancy_titles(html: str) -> List[str]:
     """Извлекает названия вакансий с проверкой на shutdown"""
@@ -132,34 +125,12 @@ def extract_vacancy_titles(html: str) -> List[str]:
 
     blacklist_text = {"вакансии", "назад", "смотреть вакансии"}
 
-    def is_probable_job_link(href: str, text: str) -> bool:
-        if _shutdown_requested:
-            return False
-        txt = text.strip().lower()
-        if not txt or txt in blacklist_text:
-            return False
-        if href.endswith("/vacancies") or href.endswith("/vacancies/"):
-            return False
-        if "action=filter" in href or href.rstrip("/").endswith("/vacancies"):
-            return False
-        if len(text.strip()) < 5:
-            return False
-        try:
-            path = href.split("?")[0]
-            segments = [s for s in path.split("/") if s]
-            if "vacancies" in segments:
-                idx = segments.index("vacancies")
-                return len(segments) - (idx + 1) >= 1
-        except Exception:
-            return False
-        return False
-
     filtered: List[str] = []
     seen = set()
     for href, text in parser.items:
         if _shutdown_requested:
             break
-        if is_probable_job_link(href, text):
+        if _is_probable_job_link(href, text, blacklist_text):  # FIXED: Use helper function
             t = text.strip()
             if t and t not in seen:
                 filtered.append(t)
