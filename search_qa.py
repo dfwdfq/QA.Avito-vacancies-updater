@@ -14,10 +14,10 @@ from conf import (MIN_DISK_SPACE_MB,
                   STATE_FILE_MAX_SIZE,
                   MAX_RESPONSE_SIZE,
                   AVITO_URL,
+                  _shutdown_requested,
                   get_args)
 
-from util import (register_signal_handlers,
-                  _shutdown_requested,
+from util import (register_signal_handlers,                  
                   load_env_variables,
                   check_disk_space,
                   format_console_output,

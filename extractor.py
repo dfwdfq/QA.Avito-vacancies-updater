@@ -1,8 +1,9 @@
 import re
 from html import unescape as html_unescape
 from typing import Optional, List
-from util import _shutdown_requested
+from conf import _shutdown_requested
 from vacancy_scraper import VacancyHTMLParser, MonitorResult, fetch_html
+
 try:
     from bs4 import BeautifulSoup
 except Exception:
