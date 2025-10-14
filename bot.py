@@ -3,7 +3,7 @@
 Telegram-бот для мониторинга QA-вакансий.
 """
 
-from typing import Optional,Dict,Any
+from typing import Optional,Dict,Any, List
 
 import os
 import sys
@@ -15,12 +15,13 @@ from urllib.request import Request, urlopen
 
 from conf import (MIN_DISK_SPACE_MB,
                   STATE_FILE_MAX_SIZE,
-                  SUBSCRIPTIONS_FILE)
+                  SUBSCRIPTIONS_FILE,
+                  AVITO_URL,
+                  _shutdown_requested)
 
 from util import (register_signal_handlers,
                   check_disk_space,
-                  format_telegram_summary,
-                  _shutdown_requested,
+                  format_telegram_summary,                  
                   load_env_variables,
                   check_state_file_size)
 
