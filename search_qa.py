@@ -1,15 +1,8 @@
 #!/usr/bin/env python
 """
 Скрипт: мониторинг QA-вакансий на Avito Career и уведомление в Telegram.
-
-Улучшения для Raspberry Pi:
-- Ограничение размера ответа
-- Обработка сигналов для graceful shutdown
-- Проверка места на диске
-- Улучшенная обработка ошибок
 """
 
-import argparse
 import json
 import os
 import re
@@ -17,28 +10,33 @@ import sys
 
 from typing import List, Optional
 
-from conf import MIN_DISK_SPACE_MB, STATE_FILE_MAX_SIZE, MAX_RESPONSE_SIZE,AVITO_URL
-from util import register_signal_handlers,_shutdown_requested, load_env_variables, check_disk_space
-from extractor import extract_count_xpath, extract_vacancy_titles_bs4,extract_vacancy_titles
+from conf import (MIN_DISK_SPACE_MB,
+                  STATE_FILE_MAX_SIZE,
+                  MAX_RESPONSE_SIZE,
+                  AVITO_URL,
+                  get_args)
+
+from util import (register_signal_handlers,
+                  _shutdown_requested,
+                  load_env_variables,
+                  check_disk_space,
+                  format_console_output,
+                  format_telegram_summary)
+
+from extractor import (extract_count_xpath,
+                       extract_vacancy_titles_bs4,
+                       extract_vacancy_titles)
 
 from urllib.request import Request, urlopen
 from vacancy_scraper import MonitorResult, fetch_html
 
 
 
-
-
-
-
-
 def monitor(url: str) -> MonitorResult:
     """Основная функция мониторинга с обработкой shutdown"""
-    if _shutdown_requested:
+    if _shutdown_requested and not check_disk_space():
         return MonitorResult(titles=[], count=0)
-        
-    if not check_disk_space():
-        return MonitorResult(titles=[], count=0)
-        
+                
     try:
         html = fetch_html(url)
         titles = extract_vacancy_titles(html)
@@ -53,11 +51,9 @@ def monitor(url: str) -> MonitorResult:
 
 def send_telegram_message(token: str, chat_id: str, text: str, reply_markup: Optional[dict] = None) -> bool:
     """Отправка сообщения в Telegram с обработкой shutdown"""
-    if _shutdown_requested:
+    if _shutdown_requested and not (token or chat_id):
         return False
         
-    if not token or not chat_id:
-        return False
         
     api_url = f"https://api.telegram.org/bot{token}/sendMessage"
     payload = {
@@ -89,41 +85,10 @@ def send_telegram_message(token: str, chat_id: str, text: str, reply_markup: Opt
         print(f"Telegram send error: {e}", file=sys.stderr)
         return False
 
-def format_console_output(result: MonitorResult) -> str:
-    if result.count == 0:
-        return "Вакансий нет"
-    lines = [f"Найдено вакансий: {result.count}"]
-    lines.extend(result.titles)
-    return "\n".join(lines)
 
-def format_telegram_summary(result: MonitorResult, url: str) -> str:
-    if result.count == 0:
-        return (
-            f"<b>Avito QA вакансии</b>\n"
-            f"Вакансий нет\n"
-            f"Ссылка: {html_escape(url)}"
-        )
-    safe_titles = [html_escape(t) for t in result.titles]
-    lines = [
-        "<b>Avito QA вакансии</b>",
-        f"Найдено вакансий: <b>{result.count}</b>",
-        *safe_titles,
-        f"Ссылка: {html_escape(url)}",
-    ]
-    return "\n".join(lines)
-
-def main(argv: Optional[List[str]] = None) -> int:
-    """Основная функция с улучшенной обработкой ошибок"""
-    global _shutdown_requested
-    
-    parser = argparse.ArgumentParser(description="Мониторинг QA-вакансий Avito Career")
-    parser.add_argument("--url", default=AVITO_URL, help="URL страницы вакансий")
-    parser.add_argument(
-        "--no-telegram",
-        action="store_true",
-        help="Не отправлять уведомления в Telegram",
-    )
-    args = parser.parse_args(argv)
+def main() -> int:
+    """Основная функция с улучшенной обработкой ошибок"""    
+    args = get_args()
 
     # Check system resources
     if not check_disk_space():
@@ -138,7 +103,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             print("Shutdown requested, exiting early")
             return 130
 
-        # Вывод в консоль
+
         print(format_console_output(result))
 
         # Уведомления в Telegram
