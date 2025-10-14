@@ -14,12 +14,11 @@ import json
 import os
 import re
 import sys
-import shutil
 import ssl
 from typing import List, Optional
 
 from conf import MIN_DISK_SPACE_MB, STATE_FILE_MAX_SIZE, MAX_RESPONSE_SIZE,AVITO_URL
-from util import register_signal_handlers,_shutdown_requested, load_env_variables
+from util import register_signal_handlers,_shutdown_requested, load_env_variables, check_disk_space
 
 from urllib.request import Request, urlopen
 from vacancy_page_parser import VacancyHTMLParser, MonitorResult
@@ -39,19 +38,6 @@ except Exception:
     LH = None
 
 
-def check_disk_space(min_free_mb: int = MIN_DISK_SPACE_MB) -> bool:
-    """Проверяет, достаточно ли свободного места на диске"""
-    try:
-        total, used, free = shutil.disk_usage(os.path.dirname(os.path.abspath(__file__)))
-        free_mb = free // (1024 * 1024)
-        if free_mb < min_free_mb:
-            print(f"Warning: Low disk space - {free_mb}MB free, need {min_free_mb}MB", 
-                  file=sys.stderr)
-            return False
-        return True
-    except Exception as e:
-        print(f"Could not check disk space: {e}", file=sys.stderr)
-        return True  # Continue anyway
 
 def extract_count_xpath(html: str) -> Optional[int]:
     """Пробует извлечь количество вакансий по заданному XPath"""
