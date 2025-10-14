@@ -26,13 +26,14 @@ from extractor import (extract_count_xpath,
                        extract_vacancy_titles)
 
 from urllib.request import Request, urlopen
+from urllib.error import HTTPError, URLError
 from vacancy_scraper import MonitorResult, fetch_html
 
 
 
 def monitor(url: str) -> MonitorResult:
     """Основная функция мониторинга с обработкой shutdown"""
-    if _shutdown_requested and not check_disk_space():
+    if _shutdown_requested or not check_disk_space():
         return MonitorResult(titles=[], count=0)
                 
     try:
@@ -44,12 +45,13 @@ def monitor(url: str) -> MonitorResult:
     except InterruptedError:
         raise  # Re-raise shutdown signals
     except Exception as e:
-        print(f"Monitoring error: {e}", file=sys.stderr)
+        if not _shutdown_requested:
+            print(f"Monitoring error: {e}", file=sys.stderr)
         return MonitorResult(titles=[], count=0)
 
 def send_telegram_message(token: str, chat_id: str, text: str, reply_markup: Optional[dict] = None) -> bool:
     """Отправка сообщения в Telegram с обработкой shutdown"""
-    if _shutdown_requested and not (token or chat_id):
+    if _shutdown_requested or not token or not chat_id:
         return False
         
         
