@@ -1,22 +1,40 @@
 '''
-Module contains various and miscelanious functions.
+Module contains various helper functions separated by tags:
+- system event handlers
+  handle different signals sent to the bot
+
+- env
+  process .env
+
+- space size checkers
+  check is there enough disk space to apply operation
+
+- Info output
+  gathered information output
+
+- File I/0
+  input/output functions used to store state
 '''
 import signal
 import os
 import sys
 import json
 import shutil
+from conf import MIN_DISK_SPACE_MB, _shutdown_requested
+from vacancy_scraper import MonitorResult
 
-## HANDLERs
-# Global flag for graceful shutdown
-_shutdown_requested = False
+from typing import Optional, Dict, Any
 
+
+## system event handlers
 
 def _shutdown_handler(signum, frame):
     """Handle shutdown signals gracefully"""
     global _shutdown_requested
     _shutdown_requested = True
     print(f"Received signal {signum}, shutting down gracefully...", file=sys.stderr)
+    sys.exit(0)
+    
 def register_signal_handlers():
     '''
     Call this function whenever you need to gently react to system signals
@@ -24,7 +42,7 @@ def register_signal_handlers():
     signal.signal(signal.SIGINT, _shutdown_handler)  #handle ctrl+c
     signal.signal(signal.SIGTERM, _shutdown_handler) #signal sent by not user
 
-
+##env
 def load_env_variables():
     '''
     load data required to use telegram API
@@ -38,8 +56,7 @@ def load_env_variables():
         print(f"Error occured:{str(e)}")
         sys.exit(-2)
 
-
-from conf import MIN_DISK_SPACE_MB
+## space size checkers
 def check_disk_space(min_free_mb: int = MIN_DISK_SPACE_MB) -> bool:
     """Проверяет, достаточно ли свободного места на диске"""
     try:
@@ -54,7 +71,19 @@ def check_disk_space(min_free_mb: int = MIN_DISK_SPACE_MB) -> bool:
         print(f"Could not check disk space: {e}", file=sys.stderr)
         return True  # Continue anyway
 
-from vacancy_scraper import MonitorResult
+def check_state_file_size() -> bool:
+    """Проверяет размер файла состояния"""
+    try:
+        if os.path.exists(SUBSCRIPTIONS_FILE):
+            size = os.path.getsize(SUBSCRIPTIONS_FILE)
+            if size > STATE_FILE_MAX_SIZE:
+                print(f"State file too large: {size} bytes", file=sys.stderr)
+                return False
+        return True
+    except Exception:
+        return True
+
+## Info output
 def format_console_output(result: MonitorResult) -> str:
     if result.count == 0:
         return "Вакансий нет"
@@ -78,19 +107,8 @@ def format_telegram_summary(result: MonitorResult, url: str) -> str:
     ]
     return "\n".join(lines)
 
-def check_state_file_size() -> bool:
-    """Проверяет размер файла состояния"""
-    try:
-        if os.path.exists(SUBSCRIPTIONS_FILE):
-            size = os.path.getsize(SUBSCRIPTIONS_FILE)
-            if size > STATE_FILE_MAX_SIZE:
-                print(f"State file too large: {size} bytes", file=sys.stderr)
-                return False
-        return True
-    except Exception:
-        return True
 
-from typing import Optional, Dict, Any
+## File I/O
 def _read_json_file(path: str) -> Optional[Dict[str, Any]]:
     """Чтение JSON файла с проверкой размера"""
     if not check_disk_space() or not check_state_file_size():

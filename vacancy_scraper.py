@@ -9,8 +9,7 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
 
-from util import _shutdown_requested
-from conf import MAX_RESPONSE_SIZE
+from conf import MAX_RESPONSE_SIZE, _shutdown_requested
 
 
 try:

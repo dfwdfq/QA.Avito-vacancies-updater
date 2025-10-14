@@ -13,6 +13,9 @@ STATE_FILE_MAX_SIZE = 1 * 1024 * 1024  # 1MB max for state files
 
 #TODO: add an ability to pass constans defined above as cli arguments. Keep defined values as default
 
+# Global flag for graceful shutdown
+_shutdown_requested = False
+
 #base url that is used to retrieve information about QA
 AVITO_URL="https://career.avito.com/vacancies/razrabotka/?q=&action=filter&direction=razrabotka&tags%5B%5D=s26502"
 

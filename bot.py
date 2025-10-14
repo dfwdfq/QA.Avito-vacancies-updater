@@ -3,7 +3,7 @@
 Telegram-бот для мониторинга QA-вакансий.
 """
 
-from __future__ import annotations
+from typing import Optional,Dict,Any
 
 import os
 import sys
@@ -25,7 +25,6 @@ from util import (register_signal_handlers,
                   check_state_file_size)
 
 
-# Импортируем логику мониторинга
 from search_qa import  monitor,send_telegram_message
 
 from bot_state import (BotState,
