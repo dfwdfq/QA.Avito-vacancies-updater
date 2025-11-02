@@ -19,7 +19,8 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
 
-from conf import MAX_RESPONSE_SIZE, _shutdown_requested
+from conf import MAX_RESPONSE_SIZE
+import conf
 
 
 #certification is optional
@@ -75,7 +76,7 @@ class VacancyHTMLParser(HTMLParser):
 
 def fetch_html(url: str, timeout: int = 25) -> str:
     """Загружает HTML с ограничением размера"""
-    if _shutdown_requested:
+    if conf._shutdown_requested:
         raise InterruptedError("Shutdown requested")
         
     headers = {
@@ -106,7 +107,7 @@ def fetch_html(url: str, timeout: int = 25) -> str:
             chunks = []
             total_size = 0
             while True:
-                if _shutdown_requested:
+                if conf._shutdown_requested:
                     raise InterruptedError("Shutdown requested")
                     
                 chunk = resp.read(8192)  # 8KB chunks
@@ -131,7 +132,7 @@ def fetch_html(url: str, timeout: int = 25) -> str:
             return content.decode(charset, errors="replace")
             
     except Exception as e:
-        if _shutdown_requested:
+        if conf._shutdown_requested:
             raise InterruptedError("Shutdown requested") from e
         raise
 

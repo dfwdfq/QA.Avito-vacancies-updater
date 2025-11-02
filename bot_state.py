@@ -5,6 +5,7 @@ from typing import Optional, Set, Dict, Any, List
 from dataclasses import dataclass
 
 from conf import SUBSCRIPTIONS_FILE
+import conf
 
 from util import (_read_json_file,
                   _write_json_file,
@@ -75,7 +76,7 @@ def create_empty_state() -> BotState:
 
 def save_state(state: BotState) -> bool:
     """Сохранение состояния с блокировкой"""
-    if _shutdown_requested:
+    if conf._shutdown_requested:
         return False
         
     with state.lock:

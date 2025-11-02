@@ -22,9 +22,10 @@ import json
 import shutil
 
 from html import escape as html_escape
-from html import escape as html_escape
 
-from conf import MIN_DISK_SPACE_MB, _shutdown_requested, STATE_FILE_MAX_SIZE, SUBSCRIPTIONS_FILE
+from conf import MIN_DISK_SPACE_MB, STATE_FILE_MAX_SIZE, SUBSCRIPTIONS_FILE
+import conf
+
 from vacancy_scraper import MonitorResult
 
 from typing import Optional, Dict, Any
@@ -34,8 +35,7 @@ from typing import Optional, Dict, Any
 
 def _shutdown_handler(signum, frame):
     """Handle shutdown signals gracefully"""
-    global _shutdown_requested
-    _shutdown_requested = True
+    conf._shutdown_requested = True
     print(f"Received signal {signum}, shutting down gracefully...", file=sys.stderr)
     sys.exit(0)
     
@@ -129,7 +129,7 @@ def _read_json_file(path: str) -> Optional[Dict[str, Any]]:
 
 def _write_json_file(path: str, data: Dict[str, Any]) -> bool:
     """Запись JSON файла с проверкой ресурсов"""
-    if _shutdown_requested:
+    if conf._shutdown_requested:
         return False
         
     if not check_disk_space():

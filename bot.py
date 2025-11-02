@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 """
 Telegram-бот для мониторинга QA-вакансий.
 """
@@ -11,14 +10,14 @@ import sys
 import threading
 import time
 
-from urllib.parse import urlencode
+import urllib.parse
 from urllib.request import Request, urlopen
 
 from conf import (MIN_DISK_SPACE_MB,
                   STATE_FILE_MAX_SIZE,
                   SUBSCRIPTIONS_FILE,
-                  AVITO_URL,
-                  _shutdown_requested)
+                  AVITO_URL)
+import conf
 
 from util import (register_signal_handlers,
                   check_disk_space,
@@ -43,9 +42,9 @@ def telegram_api_call(token: str,
                       params: Optional[Dict[str, Any]] = None,
                       timeout: int = 60) -> Dict[str, Any]:
     """Вызов Telegram Bot API с обработкой shutdown"""
-    if _shutdown_requested:
+    if conf._shutdown_requested:
         return {"ok": False, "error": "shutdown"}
-        
+    
     base = f"https://api.telegram.org/bot{token}/{method}"
     url = base
     data_bytes = None
@@ -53,10 +52,10 @@ def telegram_api_call(token: str,
     
     if params:
         if method == "getUpdates":
-            qs = urlencode(params)
+            qs = urllib.parse.urlencode(params)
             url = f"{base}?{qs}"
-        else:
-            data_bytes = urlencode(params).encode("utf-8")
+        else:        
+            data_bytes = urllib.parse.urlencode(params).encode("utf-8")
             headers["Content-Type"] = "application/x-www-form-urlencoded"
             
     req = Request(url, data=data_bytes, method="POST" if data_bytes else "GET")
@@ -71,7 +70,7 @@ def telegram_api_call(token: str,
         except Exception:
             return {"ok": False, "error": "bad-json", "raw": raw}
     except Exception as e:
-        if _shutdown_requested:
+        if conf._shutdown_requested:
             return {"ok": False, "error": "shutdown"}
         return {"ok": False, "error": str(e)}
 
@@ -79,7 +78,7 @@ def handle_update(state: BotState,
                   token: str,
                   upd: Dict[str, Any]) -> None:
     """Обработка обновлений от Telegram"""
-    if _shutdown_requested:
+    if conf._shutdown_requested:
         return
         
     message = upd.get("message") or upd.get("edited_message")
@@ -150,7 +149,7 @@ def on_callback(state: BotState,
                 chat_id: int,
                 data: str) -> None:
     """Обработка callback-запросов"""
-    if _shutdown_requested:
+    if conf._shutdown_requested:
         return
         
     if data == "enable":
@@ -195,21 +194,20 @@ def polling_loop(state: BotState,
                  token: str,
                  stop_event: threading.Event) -> None:
     """Цикл опроса Telegram API"""
-    while not stop_event.is_set() and not _shutdown_requested:
+    while not stop_event.is_set() and not conf._shutdown_requested:
         params = {"timeout": 50}
         with state.lock:
             if state.last_update_id is not None:
                 params["offset"] = state.last_update_id + 1
-                
+
         try:
             data = telegram_api_call(token, "getUpdates", params=params, timeout=60)
             if not isinstance(data, dict) or not data.get("ok"):
-                time.sleep(2)
                 continue
                 
             updates: List[Dict[str, Any]] = data.get("result") or []
             for upd in updates:
-                if stop_event.is_set() or _shutdown_requested:
+                if stop_event.is_set():
                     break
                 try:
                     upd_id = int(upd.get("update_id"))
@@ -220,19 +218,17 @@ def polling_loop(state: BotState,
                     state.last_update_id = upd_id
                 handle_update(state, token, upd)
                 
-            if updates and not _shutdown_requested:
+            if updates:
                 save_state(state)
                 
         except Exception as e:
-            if not _shutdown_requested:
-                print(f"Polling error: {e}", file=sys.stderr)
-            time.sleep(3)
+            print(f"Polling error: {e}", file=sys.stderr)
 
 def scheduler_loop(state: BotState,
                    token: str,
                    stop_event: threading.Event) -> None:
     """Цикл планировщика для отправки уведомлений"""
-    while not stop_event.is_set() and not _shutdown_requested:
+    while not stop_event.is_set() and not conf._shutdown_requested:
         now = time.monotonic()
         try:
             with state.lock:
@@ -241,18 +237,18 @@ def scheduler_loop(state: BotState,
             items = []
             
         for chat_id, ts in items:
-            if stop_event.is_set() or _shutdown_requested:
+            if stop_event.is_set() or conf._shutdown_requested:
                 break
                 
             if now >= ts:
                 try:
                     result = monitor(AVITO_URL)
-                    if _shutdown_requested:
+                    if conf._shutdown_requested:
                         break
                     msg = format_telegram_summary(result, AVITO_URL)
                     send_telegram_message(token, str(chat_id), msg)
                 except Exception as e:
-                    if not _shutdown_requested:
+                    if not conf._shutdown_requested:
                         print(f"Scheduler error: {e}", file=sys.stderr)
                         
                 # Запланировать следующий запуск
@@ -260,15 +256,13 @@ def scheduler_loop(state: BotState,
                     sec = state.chat_period_sec.get(chat_id, 15 * 60)
                     state.chat_next_run[chat_id] = now + sec
                     
-                if not _shutdown_requested:
+                if not conf._shutdown_requested:
                     save_state(state)
                     
         stop_event.wait(1.0)
 
 def main() -> int:
-    """Основная функция бота"""
-    global _shutdown_requested
-    
+    """Основная функция бота"""    
     token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
     if not token:
         print("TELEGRAM_BOT_TOKEN not set in .env/environment", file=sys.stderr)
@@ -290,10 +284,8 @@ def main() -> int:
     sched.start()
 
     print("Бот запущен. Ожидаю команды /start в чате.")
-    
     try:
-        while not _shutdown_requested:
-            time.sleep(0.5)
+        while not conf._shutdown_requested:
             # Проверяем, живы ли потоки
             if not poller.is_alive() or not sched.is_alive():
                 print("One of the worker threads died, shutting down...", file=sys.stderr)

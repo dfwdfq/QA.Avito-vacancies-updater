@@ -25,10 +25,10 @@ from extractor import (extract_count_xpath,
                        extract_vacancy_titles_bs4,
                        extract_vacancy_titles)
 
+from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 from vacancy_scraper import MonitorResult, fetch_html
-
 
 
 def monitor(url: str) -> MonitorResult:
